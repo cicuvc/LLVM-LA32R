@@ -25,6 +25,7 @@ public:
   void emitDirectiveOptionNoRelax() override;
 
   void finish() override;
+
 };
 
 MCELFStreamer *createLoongArchELFStreamer(MCContext &C,

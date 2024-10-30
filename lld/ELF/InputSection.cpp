@@ -793,9 +793,12 @@ uint64_t InputSectionBase::getRelocTargetVA(Ctx &ctx, const Relocation &r,
   case R_GOTPLT_PC:
     return r.sym->getGotPltVA(ctx) + a - p;
   case R_LOONGARCH_GOT_PAGE_PC:
-    if (r.sym->hasFlag(NEEDS_TLSGD))
-      return getLoongArchPageDelta(ctx.in.got->getGlobalDynAddr(*r.sym) + a, p,
+    if (r.sym->hasFlag(NEEDS_TLSGD)) {
+      
+    return getLoongArchPageDelta(ctx.in.got->getGlobalDynAddr(*r.sym) + a, p,
                                    r.type);
+    }
+
     return getLoongArchPageDelta(r.sym->getGotVA(ctx) + a, p, r.type);
   case R_MIPS_GOTREL:
     return r.sym->getVA(ctx, a) - ctx.in.mipsGot->getGp(file);
@@ -960,6 +963,38 @@ uint64_t InputSectionBase::getRelocTargetVA(Ctx &ctx, const Relocation &r,
     return ctx.in.got->getTlsIndexOff() + a;
   case R_TLSLD_PC:
     return ctx.in.got->getTlsIndexVA() + a - p;
+  case R_LOONGARCH_SOP_GOT:
+  case R_LOONGARCH_SOP: {
+    const_cast<Relocation &>(r).addend = p;
+    if (r.type == ELF::R_LARCH_SOP_PUSH_PCREL) {
+      printf("R_LARCH_SOP_PUSH_PCREL return symbol %s address %x\n",
+             r.sym->getName().data(), r.sym->getVA(ctx, 0));
+      return r.sym->getVA(ctx, a) - p;
+    }
+
+    if (r.type == ELF::R_LARCH_SOP_PUSH_TLS_TPREL) {
+      return (r.sym->isUndefined() ? 0 : getTlsTpOffset(ctx, *r.sym)) + a;
+    }
+    if (r.type == ELF::R_LARCH_SOP_PUSH_TLS_GOT) {
+      return r.sym->getGotOffset(ctx) + a - p;
+    }
+    if (r.type == ELF::R_LARCH_SOP_PUSH_TLS_GD) {
+      auto gotOffset =
+          ctx.in.got->getGlobalDynAddr(*r.sym) - ctx.in.got->getVA();
+      return gotOffset + a;
+    }
+        
+    if (r.type == ELF::R_LARCH_SOP_PUSH_GPREL) {
+      if (r.sym->isTls())
+        return ctx.in.got->getGlobalDynAddr(*r.sym) - ctx.in.got->getVA();
+      return r.sym->getGotOffset(ctx);
+    }
+      
+    if (r.type == ELF::R_LARCH_SOP_PUSH_ABSOLUTE)
+      return (r.sym ? r.sym->getVA(ctx) : 0) + a;
+    
+    return 0;
+  }
   default:
     llvm_unreachable("invalid expression");
   }

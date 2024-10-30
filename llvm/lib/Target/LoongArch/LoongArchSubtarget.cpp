@@ -28,9 +28,14 @@ LoongArchSubtarget &LoongArchSubtarget::initializeSubtargetDependencies(
     const Triple &TT, StringRef CPU, StringRef TuneCPU, StringRef FS,
     StringRef ABIName) {
   bool Is64Bit = TT.isArch64Bit();
-  if (CPU.empty() || CPU == "generic")
-    CPU = Is64Bit ? "generic-la64" : "generic-la32";
-
+  if (CPU.empty() || CPU == "generic") {
+    if (Is64Bit)
+      CPU = "generic-la64";
+    else {
+      CPU = TT.isLoongArch32Reduced() ? "generic-la32r" : "generic-la32";
+    }
+  }
+    
   if (TuneCPU.empty())
     TuneCPU = CPU;
 

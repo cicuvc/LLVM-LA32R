@@ -15,7 +15,8 @@
 using namespace llvm;
 
 LoongArchTargetStreamer::LoongArchTargetStreamer(MCStreamer &S)
-    : MCTargetStreamer(S) {}
+    : MCTargetStreamer(S) {
+}
 
 void LoongArchTargetStreamer::setTargetABI(LoongArchABI::ABI ABI) {
   assert(ABI != LoongArchABI::ABI_Unknown &&

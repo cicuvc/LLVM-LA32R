@@ -11,8 +11,14 @@
 #include "Symbols.h"
 #include "SyntheticSections.h"
 #include "Target.h"
+#include "SymbolTable.h"
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/Support/LEB128.h"
+
+#include <map>
+#include <stack>
+#include <mutex>
+#include <thread>
 
 using namespace llvm;
 using namespace llvm::object;
@@ -40,7 +46,15 @@ public:
                 uint64_t val) const override;
   bool relaxOnce(int pass) const override;
   void finalizeRelax(int passes) const override;
+
+protected:
+  std::map<int64_t, std::stack<int64_t> *> *m_RelocationStackMap;
+  std::mutex* m_RelocStackLock;
+  void pushRelocEvalStack(int64_t pc, int64_t value) const;
+  int64_t popRelocEvalStack(int64_t pc) const;
 };
+
+
 } // end anonymous namespace
 
 namespace {
@@ -170,7 +184,10 @@ static void handleUleb128(Ctx &ctx, uint8_t *loc, uint64_t val) {
   encodeULEB128((orig + val) & mask, loc, count);
 }
 
-LoongArch::LoongArch(Ctx &ctx) : TargetInfo(ctx) {
+LoongArch::LoongArch(Ctx &ctx)
+    : TargetInfo(ctx),
+      m_RelocationStackMap(new std::map<int64_t, std::stack<int64_t> *>()),
+      m_RelocStackLock (new std::mutex()){
   // The LoongArch ISA itself does not have a limit on page sizes. According to
   // the ISA manual, the PS (page size) field in MTLB entries and CSR.STLBPS is
   // 6 bits wide, meaning the maximum page size is 2^63 which is equivalent to
@@ -518,7 +535,21 @@ RelExpr LoongArch::getRelExpr(const RelType type, const Symbol &s,
     return R_TLSGD_PC;
   case R_LARCH_TLS_DESC_PCREL20_S2:
     return R_TLSDESC_PC;
-
+  case R_LARCH_SOP_ADD:
+  case R_LARCH_SOP_SUB:
+  case R_LARCH_SOP_AND:
+  case R_LARCH_SOP_SL:
+  case R_LARCH_SOP_SR:
+  case R_LARCH_SOP_PUSH_ABSOLUTE:
+  case R_LARCH_SOP_POP_32_S_5_20:
+  case R_LARCH_SOP_POP_32_S_10_12:
+  case R_LARCH_SOP_PUSH_PCREL:
+    return R_LOONGARCH_SOP;
+  case R_LARCH_SOP_PUSH_GPREL:
+  case R_LARCH_SOP_PUSH_TLS_TPREL:
+  case R_LARCH_SOP_PUSH_TLS_GD:
+  case R_LARCH_SOP_PUSH_TLS_GOT:
+    return R_LOONGARCH_SOP_GOT;
   // Other known relocs that are explicitly unimplemented:
   //
   // - psABI v1 relocs that need a stateful stack machine to work, and not
@@ -738,10 +769,105 @@ void LoongArch::relocate(uint8_t *loc, const Relocation &rel,
   case R_LARCH_TLS_DESC64:
     write64le(loc + 8, val);
     return;
-
-  default:
-    llvm_unreachable("unknown relocation");
+  case R_LARCH_SOP_PUSH_PCREL: {
+    pushRelocEvalStack((int64_t)rel.addend, (int64_t)val);
+    break;
+    }
+  case R_LARCH_SOP_PUSH_GPREL: {
+      pushRelocEvalStack((int64_t)rel.addend, (int64_t)val);
+    break;
   }
+  case R_LARCH_SOP_PUSH_ABSOLUTE: {
+    pushRelocEvalStack((int64_t)rel.addend, (int64_t)val);
+    break;
+  }
+  case R_LARCH_SOP_ADD: {
+    auto p = (int64_t)rel.addend;
+    auto op1 = popRelocEvalStack(p);
+    auto op2 = popRelocEvalStack(p);
+    pushRelocEvalStack(p, op1 + op2);
+    break;
+  }
+  case R_LARCH_SOP_AND: {
+    auto p = (int64_t)rel.addend;
+    auto op1 = popRelocEvalStack(p);
+    auto op2 = popRelocEvalStack(p);
+    pushRelocEvalStack(p, op1 & op2);
+    break;
+  }
+  case R_LARCH_SOP_SUB: {
+    auto p = (int64_t)rel.addend;
+    auto op1 = popRelocEvalStack(p);
+    auto op2 = popRelocEvalStack(p);
+    pushRelocEvalStack(p, op2 - op1);
+    break;
+  }
+  case R_LARCH_SOP_SR: {
+    auto p = (int64_t)rel.addend;
+    auto bits = popRelocEvalStack(p);
+    auto val = popRelocEvalStack(p);
+    pushRelocEvalStack(p, val >> bits);
+    break;
+  }
+  case R_LARCH_SOP_PUSH_TLS_TPREL: {
+    pushRelocEvalStack((int64_t)rel.addend, (int64_t)val);
+    break;
+  }
+  case R_LARCH_SOP_PUSH_TLS_GD: {
+    pushRelocEvalStack((int64_t)rel.addend, (int64_t)val);
+    break;
+  }
+  case R_LARCH_SOP_PUSH_TLS_GOT: {
+    pushRelocEvalStack((int64_t)rel.addend, (int64_t)val);
+    break;
+  }
+  case R_LARCH_SOP_POP_32_S_5_20: {
+    auto p = (int64_t)rel.addend;
+    auto value = popRelocEvalStack(p);
+    write32le(loc, setJ20(read32le(loc), extractBits(value, 19, 0)));
+    break;
+  }
+  case R_LARCH_SOP_POP_32_S_10_12: {
+    auto p = (int64_t)rel.addend;
+    auto value = popRelocEvalStack(p);
+    write32le(loc, setK12(read32le(loc), extractBits(value, 11, 0)));
+    break;
+  }
+  default: {
+    report_fatal_error("unknown relocation at LoongArch::relocate");
+    return;
+    }
+    //llvm_unreachable("unknown relocation");
+  }
+}
+
+void LoongArch::pushRelocEvalStack(int64_t p, int64_t value) const {
+  m_RelocStackLock->lock();
+  auto relocStackMap = m_RelocationStackMap;
+  if (relocStackMap->find(p) == relocStackMap->end()) {
+    relocStackMap->insert({p, new std::stack<int64_t>()});
+  }
+  auto stack = (*relocStackMap)[p];
+  stack->push(value);
+  m_RelocStackLock->unlock();
+}
+
+int64_t LoongArch::popRelocEvalStack(int64_t p)const {
+  m_RelocStackLock->lock();
+  auto relocStackMap = m_RelocationStackMap;
+  if (relocStackMap->find(p) == relocStackMap->end()) {
+    report_fatal_error("Stack empty at LoongArch::popRelocEvalStack");
+    llvm_unreachable();
+  }
+  auto stack = (*relocStackMap)[p];
+  auto value = stack->top();
+  stack->pop();
+  if (!stack->size()) {
+    relocStackMap->erase(p);
+    delete stack;
+  }
+  m_RelocStackLock->unlock();
+  return value;
 }
 
 static bool relax(Ctx &ctx, InputSection &sec) {

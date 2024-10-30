@@ -3105,6 +3105,8 @@ void LoongArchTargetLowering::ReplaceNodeResults(
 static SDValue performANDCombine(SDNode *N, SelectionDAG &DAG,
                                  TargetLowering::DAGCombinerInfo &DCI,
                                  const LoongArchSubtarget &Subtarget) {
+  if (Subtarget.is32BitReduced())
+    return SDValue();
   if (DCI.isBeforeLegalizeOps())
     return SDValue();
 
@@ -3191,6 +3193,8 @@ static SDValue performANDCombine(SDNode *N, SelectionDAG &DAG,
 static SDValue performSRLCombine(SDNode *N, SelectionDAG &DAG,
                                  TargetLowering::DAGCombinerInfo &DCI,
                                  const LoongArchSubtarget &Subtarget) {
+  if (Subtarget.is32BitReduced())
+    return SDValue();
   if (DCI.isBeforeLegalizeOps())
     return SDValue();
 
@@ -3232,6 +3236,8 @@ static SDValue performSRLCombine(SDNode *N, SelectionDAG &DAG,
 static SDValue performORCombine(SDNode *N, SelectionDAG &DAG,
                                 TargetLowering::DAGCombinerInfo &DCI,
                                 const LoongArchSubtarget &Subtarget) {
+  if (Subtarget.is32BitReduced())
+    return SDValue();
   MVT GRLenVT = Subtarget.getGRLenVT();
   EVT ValTy = N->getValueType(0);
   SDValue N0 = N->getOperand(0), N1 = N->getOperand(1);

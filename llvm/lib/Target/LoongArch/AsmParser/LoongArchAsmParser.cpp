@@ -879,6 +879,7 @@ void LoongArchAsmParser::emitLAInstSeq(MCRegister DestReg, MCRegister TmpReg,
     switch (Opc) {
     default:
       llvm_unreachable("unexpected opcode");
+    case LoongArch::PCADDU12I:
     case LoongArch::PCALAU12I:
     case LoongArch::LU12I_W:
       Out.emitInstruction(MCInstBuilder(Opc).addReg(DestReg).addExpr(LE),
@@ -985,8 +986,12 @@ void LoongArchAsmParser::emitLoadAddressPcrel(MCInst &Inst, SMLoc IDLoc,
   InstSeq Insts;
   unsigned ADDI = is64Bit() ? LoongArch::ADDI_D : LoongArch::ADDI_W;
 
+  auto pcRelInst = Out.getContext().getTargetTriple().isLoongArch32Reduced()
+                       ? LoongArch::PCADDU12I
+                       : LoongArch::PCALAU12I;
+      
   Insts.push_back(LoongArchAsmParser::Inst(
-      LoongArch::PCALAU12I, LoongArchMCExpr::VK_LoongArch_PCALA_HI20));
+      pcRelInst, LoongArchMCExpr::VK_LoongArch_PCALA_HI20));
   Insts.push_back(
       LoongArchAsmParser::Inst(ADDI, LoongArchMCExpr::VK_LoongArch_PCALA_LO12));
 
@@ -1031,8 +1036,12 @@ void LoongArchAsmParser::emitLoadAddressGot(MCInst &Inst, SMLoc IDLoc,
   InstSeq Insts;
   unsigned LD = is64Bit() ? LoongArch::LD_D : LoongArch::LD_W;
 
+   auto pcRelInst = Out.getContext().getTargetTriple().isLoongArch32Reduced()
+                       ? LoongArch::PCADDU12I
+                       : LoongArch::PCALAU12I;
+
   Insts.push_back(LoongArchAsmParser::Inst(
-      LoongArch::PCALAU12I, LoongArchMCExpr::VK_LoongArch_GOT_PC_HI20));
+       pcRelInst, LoongArchMCExpr::VK_LoongArch_GOT_PC_HI20));
   Insts.push_back(
       LoongArchAsmParser::Inst(LD, LoongArchMCExpr::VK_LoongArch_GOT_PC_LO12));
 
@@ -1095,8 +1104,12 @@ void LoongArchAsmParser::emitLoadAddressTLSIE(MCInst &Inst, SMLoc IDLoc,
   InstSeq Insts;
   unsigned LD = is64Bit() ? LoongArch::LD_D : LoongArch::LD_W;
 
+  auto pcRelInst = Out.getContext().getTargetTriple().isLoongArch32Reduced()
+                       ? LoongArch::PCADDU12I
+                       : LoongArch::PCALAU12I;
+
   Insts.push_back(LoongArchAsmParser::Inst(
-      LoongArch::PCALAU12I, LoongArchMCExpr::VK_LoongArch_TLS_IE_PC_HI20));
+      pcRelInst, LoongArchMCExpr::VK_LoongArch_TLS_IE_PC_HI20));
   Insts.push_back(LoongArchAsmParser::Inst(
       LD, LoongArchMCExpr::VK_LoongArch_TLS_IE_PC_LO12));
 
@@ -1141,8 +1154,11 @@ void LoongArchAsmParser::emitLoadAddressTLSLD(MCInst &Inst, SMLoc IDLoc,
   InstSeq Insts;
   unsigned ADDI = is64Bit() ? LoongArch::ADDI_D : LoongArch::ADDI_W;
 
+  auto pcRelInst = Out.getContext().getTargetTriple().isLoongArch32Reduced()
+                       ? LoongArch::PCADDU12I
+                       : LoongArch::PCALAU12I;
   Insts.push_back(LoongArchAsmParser::Inst(
-      LoongArch::PCALAU12I, LoongArchMCExpr::VK_LoongArch_TLS_LD_PC_HI20));
+      pcRelInst, LoongArchMCExpr::VK_LoongArch_TLS_LD_PC_HI20));
   Insts.push_back(LoongArchAsmParser::Inst(
       ADDI, LoongArchMCExpr::VK_LoongArch_GOT_PC_LO12));
 
@@ -1279,8 +1295,12 @@ void LoongArchAsmParser::emitLoadAddressTLSDescPcrel(MCInst &Inst, SMLoc IDLoc,
   unsigned LD = is64Bit() ? LoongArch::LD_D : LoongArch::LD_W;
   InstSeq Insts;
 
+  auto pcRelInst = Out.getContext().getTargetTriple().isLoongArch32Reduced()
+                       ? LoongArch::PCADDU12I
+                       : LoongArch::PCALAU12I;
+  report_fatal_error("Not implemented TLSDesccPcRel");
   Insts.push_back(LoongArchAsmParser::Inst(
-      LoongArch::PCALAU12I, LoongArchMCExpr::VK_LoongArch_TLS_DESC_PC_HI20));
+      pcRelInst, LoongArchMCExpr::VK_LoongArch_TLS_DESC_PC_HI20));
   Insts.push_back(LoongArchAsmParser::Inst(
       ADDI, LoongArchMCExpr::VK_LoongArch_TLS_DESC_PC_LO12));
   Insts.push_back(

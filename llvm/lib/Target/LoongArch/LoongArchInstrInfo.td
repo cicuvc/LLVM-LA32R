@@ -584,6 +584,9 @@ def AlslSlliImmI0 : SDNodeXForm<imm, [{
 
 // Check if (and r, imm) can be optimized to (BSTRINS r, R0, msb, lsb),
 // in which imm = ~((2^^(msb-lsb+1) - 1) << lsb).
+
+
+
 def BstrinsImm : PatLeaf<(imm), [{
   if (!N->hasOneUse())
     return false;
@@ -615,6 +618,7 @@ def BstrinsLsb: SDNodeXForm<imm, [{
       : llvm::isShiftedMask_64(~Imm, MaskIdx, MaskLen);
   return CurDAG->getTargetConstant(MaskIdx, SDLoc(N), N->getValueType(0));
 }]>;
+
 
 //===----------------------------------------------------------------------===//
 // Instruction Formats
@@ -1126,6 +1130,17 @@ def : PatGprGpr<urem, MOD_WU>;
 def : PatGprGpr<mul, MUL_W>;
 def : PatGprGpr<mulhs, MULH_W>;
 def : PatGprGpr<mulhu, MULH_WU>;
+} // Predicates = [IsLA32]
+
+let Predicates = [IsLA32Reduced] in {
+    def: Pat<(rotr GPR:$rj, uimm5:$imm),
+          (OR (SRLI_W GPR:$rj, uimm5:$imm), (SLLI_W GPR:$rj, (NegImm uimm5:$imm)))>;
+
+    def: Pat<(shiftop<rotr> GPR:$rj, GPR:$rk),
+          (OR (SRL_W GPR:$rj, GPR:$rk), (SLL_W GPR:$rj, (SUB_W R0, GPR:$rk)))>;
+}
+let Predicates = [IsLA32Std] in {
+
 def : PatGprGpr<shiftop<rotr>, ROTR_W>;
 def : PatGprImm<rotr, ROTRI_W, uimm5>;
 
@@ -1135,7 +1150,8 @@ foreach Idx = 1...3 in {
   def : Pat<(or (shl GPR:$rk, (i32 ShamtA)), (srl GPR:$rj, (i32 ShamtB))),
             (BYTEPICK_W GPR:$rj, GPR:$rk, Idx)>;
 }
-} // Predicates = [IsLA32]
+
+} // Predicates = [IsLA32Std]
 
 let Predicates = [IsLA64] in {
 def : PatGprGpr<add, ADD_D>;
@@ -1193,7 +1209,7 @@ def : Pat<(sext_inreg (add GPR:$rj, (AddiPair:$im)), i32),
                   (AddiPairImmSmall AddiPair:$im))>;
 } // Predicates = [IsLA64]
 
-let Predicates = [IsLA32] in {
+let Predicates = [IsLA32Std] in {
 foreach Idx0 = 1...4 in {
   foreach Idx1 = 1...4 in {
     defvar CImm = !add(1, !shl(!add(1, !shl(1, Idx0)), Idx1));
@@ -1211,7 +1227,7 @@ foreach Idx0 = 1...4 in {
                       (ALSL_W GPR:$r, GPR:$r, (i32 Idx0)), (i32 Idx1))>;
   }
 }
-} // Predicates = [IsLA32]
+} // Predicates = [IsLA32Std]
 
 let Predicates = [IsLA64] in {
 foreach Idx0 = 1...4 in {
@@ -1239,11 +1255,11 @@ foreach Idx0 = 1...4 in {
 }
 } // Predicates = [IsLA64]
 
-let Predicates = [IsLA32] in {
+let Predicates = [IsLA32Std] in {
 def : Pat<(mul GPR:$rj, (AlslSlliImm:$im)),
           (SLLI_W (ALSL_W GPR:$rj, GPR:$rj, (AlslSlliImmI0 AlslSlliImm:$im)),
                   (AlslSlliImmI1 AlslSlliImm:$im))>;
-} // Predicates = [IsLA32]
+} // Predicates = [IsLA32Std]
 
 let Predicates = [IsLA64] in {
 def : Pat<(sext_inreg (mul GPR:$rj, (AlslSlliImm:$im)), i32),
@@ -1253,6 +1269,8 @@ def : Pat<(mul GPR:$rj, (AlslSlliImm:$im)),
           (SLLI_D (ALSL_D GPR:$rj, GPR:$rj, (AlslSlliImmI0 AlslSlliImm:$im)),
                   (AlslSlliImmI1 AlslSlliImm:$im))>;
 } // Predicates = [IsLA64]
+
+let Predicates = [IsLA32Std] in {
 
 foreach Idx = 1...7 in {
   defvar ShamtA = !mul(8, Idx);
@@ -1271,6 +1289,9 @@ foreach Idx = 1...3 in {
                                                          (i64 ShamtB))), i32),
             (BYTEPICK_W GPR:$rj, GPR:$rk, Idx)>;
 }
+
+} // Predicates = [IsLA32Std]
+
 } // Predicates = [IsLA64]
 
 def : PatGprGpr<and, AND>;
@@ -1281,14 +1302,19 @@ def : PatGprGpr<xor, XOR>;
 def : PatGprImm<xor, XORI, uimm12>;
 def : Pat<(not GPR:$rj), (NOR GPR:$rj, R0)>;
 def : Pat<(not (or GPR:$rj, GPR:$rk)), (NOR GPR:$rj, GPR:$rk)>;
+
+let Predicates = [IsLA32Std] in {
+
 def : Pat<(or GPR:$rj, (not GPR:$rk)), (ORN GPR:$rj, GPR:$rk)>;
 def : Pat<(and GPR:$rj, (not GPR:$rk)), (ANDN GPR:$rj, GPR:$rk)>;
 
-let Predicates = [IsLA32] in {
+} // Predicates = [IsLA32Std]
+
+let Predicates = [IsLA32Std] in {
 def : Pat<(and GPR:$rj, BstrinsImm:$imm),
           (BSTRINS_W GPR:$rj, R0, (BstrinsMsb BstrinsImm:$imm),
                      (BstrinsLsb BstrinsImm:$imm))>;
-} // Predicates = [IsLA32]
+} // Predicates = [IsLA32Std]
 
 let Predicates = [IsLA64] in {
 def : Pat<(and GPR:$rj, BstrinsImm:$imm),
@@ -1324,12 +1350,12 @@ def : Pat<(loongarch_clzw (not GPR:$rj)), (CLO_W GPR:$rj)>;
 def : Pat<(loongarch_ctzw (not GPR:$rj)), (CTO_W GPR:$rj)>;
 } // Predicates = [IsLA64]
 
-let Predicates = [IsLA32] in {
+let Predicates = [IsLA32Std] in {
 def : PatGpr<ctlz, CLZ_W>;
 def : PatGpr<cttz, CTZ_W>;
 def : Pat<(ctlz (not GPR:$rj)), (CLO_W GPR:$rj)>;
 def : Pat<(cttz (not GPR:$rj)), (CTO_W GPR:$rj)>;
-} // Predicates = [IsLA32]
+} // Predicates = [IsLA32Std]
 
 /// FrameIndex calculations
 let Predicates = [IsLA32] in {
@@ -1342,10 +1368,10 @@ def : Pat<(AddLike (i64 BaseAddr:$rj), simm12:$imm12),
 } // Predicates = [IsLA64]
 
 /// Shifted addition
-let Predicates = [IsLA32] in {
+let Predicates = [IsLA32Std] in {
 def : Pat<(add GPR:$rk, (shl GPR:$rj, uimm2_plus1:$imm2)),
           (ALSL_W GPR:$rj, GPR:$rk, uimm2_plus1:$imm2)>;
-} // Predicates = [IsLA32]
+} // Predicates = [IsLA32Std]
 let Predicates = [IsLA64] in {
 def : Pat<(add GPR:$rk, (shl GPR:$rj, uimm2_plus1:$imm2)),
           (ALSL_D GPR:$rj, GPR:$rk, uimm2_plus1:$imm2)>;
@@ -1381,8 +1407,15 @@ def : PatGprImm<srl, SRLI_D, uimm6>;
 
 /// sext and zext
 
+let Predicates = [IsLA32Std] in {
 def : Pat<(sext_inreg GPR:$rj, i8), (EXT_W_B GPR:$rj)>;
 def : Pat<(sext_inreg GPR:$rj, i16), (EXT_W_H GPR:$rj)>;
+} // Predicates = [IsLA32Std]
+
+let Predicates = [IsLA32Reduced] in {
+def : Pat<(sext_inreg GPR:$rj, i8), (SRAI_W (SLLI_W GPR:$rj, 24), 24)>;
+def : Pat<(sext_inreg GPR:$rj, i16), (SRAI_W (SLLI_W GPR:$rj, 16), 16)>;
+} // Predicates = [IsLA32Reduced]
 
 let Predicates = [IsLA64] in {
 def : Pat<(sext_inreg GPR:$rj, i32), (ADDI_W GPR:$rj, 0)>;
@@ -1426,11 +1459,23 @@ def : Pat<(setle GPR:$rj, GPR:$rk), (XORI (SLT GPR:$rk, GPR:$rj), 1)>;
 
 /// Select
 
+let Predicates = [IsLAStd] in {
+
 def : Pat<(select GPR:$cond, GPR:$t, 0), (MASKEQZ GPR:$t, GPR:$cond)>;
 def : Pat<(select GPR:$cond, 0, GPR:$f), (MASKNEZ GPR:$f, GPR:$cond)>;
 def : Pat<(select GPR:$cond, GPR:$t, GPR:$f),
           (OR (MASKEQZ GPR:$t, GPR:$cond), (MASKNEZ GPR:$f, GPR:$cond))>;
 
+}
+
+let Predicates = [IsLA32Reduced] in {
+
+def : Pat<(select GPR:$cond, GPR:$t, 0), (AND GPR:$t, (SUB_W R0, GPR:$cond))>;
+def : Pat<(select GPR:$cond, 0, GPR:$f), (AND GPR:$f, (ADDI_W GPR:$cond, -1))>;
+def : Pat<(select GPR:$cond, GPR:$t, GPR:$f),
+          (OR (AND GPR:$t, (SUB_W R0, GPR:$cond)), (AND GPR:$f, (ADDI_W GPR:$cond, -1)))>;
+
+}
 /// Branches and jumps
 
 class BccPat<PatFrag CondOp, LAInst Inst>
@@ -1457,12 +1502,27 @@ def : BccSwapPat<setule, BGEU>;
 
 // An extra pattern is needed for a brcond without a setcc (i.e. where the
 // condition was calculated elsewhere).
+let Predicates = [IsLAStd] in {
+
 def : Pat<(brcond GPR:$rj, bb:$imm21), (BNEZ GPR:$rj, bb:$imm21)>;
 
 def : Pat<(brcond (GRLenVT (seteq GPR:$rj, 0)), bb:$imm21),
           (BEQZ GPR:$rj, bb:$imm21)>;
 def : Pat<(brcond (GRLenVT (setne GPR:$rj, 0)), bb:$imm21),
           (BNEZ GPR:$rj, bb:$imm21)>;
+
+}
+
+let Predicates = [IsLA32Reduced] in {
+
+def : Pat<(brcond GPR:$rj, bb:$imm21), (BNE GPR:$rj, R0, bb:$imm21)>;
+
+def : Pat<(brcond (GRLenVT (seteq GPR:$rj, 0)), bb:$imm21),
+          (BEQ GPR:$rj, R0, bb:$imm21)>;
+def : Pat<(brcond (GRLenVT (setne GPR:$rj, 0)), bb:$imm21),
+          (BNE GPR:$rj, R0, bb:$imm21)>;
+
+}
 
 let isBarrier = 1, isBranch = 1, isTerminator = 1 in
 def PseudoBR : Pseudo<(outs), (ins simm26_b:$imm26), [(br bb:$imm26)]>,
@@ -1729,12 +1789,12 @@ def : InstAlias<"la.local $dst, $tmp, $src",
 
 /// BSTRINS and BSTRPICK
 
-let Predicates = [IsLA32] in {
+let Predicates = [IsLA32Std] in {
 def : Pat<(loongarch_bstrins GPR:$rd, GPR:$rj, uimm5:$msbd, uimm5:$lsbd),
           (BSTRINS_W GPR:$rd, GPR:$rj, uimm5:$msbd, uimm5:$lsbd)>;
 def : Pat<(loongarch_bstrpick GPR:$rj, uimm5:$msbd, uimm5:$lsbd),
           (BSTRPICK_W GPR:$rj, uimm5:$msbd, uimm5:$lsbd)>;
-} // Predicates = [IsLA32]
+} // Predicates = [IsLA32Std]
 
 let Predicates = [IsLA64] in {
 def : Pat<(loongarch_bstrins GPR:$rd, GPR:$rj, uimm6:$msbd, uimm6:$lsbd),
@@ -1744,16 +1804,17 @@ def : Pat<(loongarch_bstrpick GPR:$rj, uimm6:$msbd, uimm6:$lsbd),
 } // Predicates = [IsLA64]
 
 /// Byte-swapping and bit-reversal
+let Predicates = [IsLA32Std] in {
 
 def : Pat<(loongarch_revb_2h GPR:$rj), (REVB_2H GPR:$rj)>;
 def : Pat<(loongarch_bitrev_4b GPR:$rj), (BITREV_4B GPR:$rj)>;
 
-let Predicates = [IsLA32] in {
+
 def : Pat<(bswap GPR:$rj), (ROTRI_W (REVB_2H GPR:$rj), 16)>;
 def : Pat<(bitreverse GPR:$rj), (BITREV_W GPR:$rj)>;
 def : Pat<(bswap (bitreverse GPR:$rj)), (BITREV_4B GPR:$rj)>;
 def : Pat<(bitreverse (bswap GPR:$rj)), (BITREV_4B GPR:$rj)>;
-} // Predicates = [IsLA32]
+} // Predicates = [IsLA32Std]
 
 let Predicates = [IsLA64] in {
 def : Pat<(loongarch_revb_2w GPR:$rj), (REVB_2W GPR:$rj)>;
@@ -2323,6 +2384,7 @@ def : Pat<(loongarch_csrwr GPR:$rd, uimm14:$imm14),
 def : Pat<(loongarch_csrxchg GPR:$rd, GPR:$rj, uimm14:$imm14),
           (CSRXCHG GPR:$rd, GPR:$rj, uimm14:$imm14)>;
 
+let Predicates = [IsLAStd] in {
 def : Pat<(loongarch_iocsrrd_b GPR:$rj), (IOCSRRD_B GPR:$rj)>;
 def : Pat<(loongarch_iocsrrd_h GPR:$rj), (IOCSRRD_H GPR:$rj)>;
 def : Pat<(loongarch_iocsrrd_w GPR:$rj), (IOCSRRD_W GPR:$rj)>;
@@ -2332,6 +2394,7 @@ def : Pat<(loongarch_iocsrwr_h GPR:$rd, GPR:$rj), (IOCSRWR_H GPR:$rd, GPR:$rj)>;
 def : Pat<(loongarch_iocsrwr_w GPR:$rd, GPR:$rj), (IOCSRWR_W GPR:$rd, GPR:$rj)>;
 
 def : Pat<(loongarch_cpucfg GPR:$rj), (CPUCFG GPR:$rj)>;
+} // = [IsLAStd]
 
 let Predicates = [IsLA64] in {
 def : Pat<(loongarch_iocsrrd_d GPR:$rj), (IOCSRRD_D GPR:$rj)>;

@@ -150,7 +150,7 @@ void LoongArchAsmBackend::applyFixup(const MCAssembler &Asm,
                                      const MCSubtargetInfo *STI) const {
   if (!Value)
     return; // Doesn't change encoding.
-
+  
   MCFixupKind Kind = Fixup.getKind();
   if (Kind >= FirstLiteralRelocationKind)
     return;
@@ -176,6 +176,7 @@ void LoongArchAsmBackend::applyFixup(const MCAssembler &Asm,
   for (unsigned I = 0; I != NumBytes; ++I) {
     Data[Offset + I] |= uint8_t((Value >> (I * 8)) & 0xff);
   }
+
 }
 
 // Linker relaxation may change code size. We have to insert Nops

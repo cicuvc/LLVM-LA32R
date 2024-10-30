@@ -17,6 +17,8 @@
 #include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCCodeEmitter.h"
 #include "llvm/MC/MCELFObjectWriter.h"
+#include "llvm/MC/MCSection.h"
+#include "llvm/MC/MCContext.h"
 
 using namespace llvm;
 
@@ -29,6 +31,10 @@ LoongArchTargetELFStreamer::LoongArchTargetELFStreamer(
   setTargetABI(LoongArchABI::computeTargetABI(
       STI.getTargetTriple(), STI.getFeatureBits(),
       MAB.getTargetOptions().getABIName()));
+  
+  auto& mcContext = getStreamer().getContext();
+  auto gotBase = mcContext.getOrCreateSymbol("_GLOBAL_OFFSET_TABLE_");
+  getStreamer().getAssembler().registerSymbol(*gotBase);
 }
 
 MCELFStreamer &LoongArchTargetELFStreamer::getStreamer() {

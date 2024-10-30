@@ -20,6 +20,11 @@ def Feature64Bit
 def Feature32Bit
     : SubtargetFeature<"32bit", "HasLA32", "true",
                        "LA32 Basic Integer and Privilege Instruction Set">;
+
+def Feature32BitReduced
+    : SubtargetFeature<"la-32r", "HasLA32Reduced", "true",
+                       "LA32 Reduced Instruction Set">;
+
 def IsLA64
     : Predicate<"Subtarget->is64Bit()">,
       AssemblerPredicate<(all_of Feature64Bit),
@@ -28,6 +33,21 @@ def IsLA32
     : Predicate<"!Subtarget->is64Bit()">,
       AssemblerPredicate<(all_of(not Feature64Bit)),
                          "LA32 Basic Integer and Privilege Instruction Set">;
+
+def IsLA32Reduced
+    : Predicate<"(!Subtarget->is64Bit()) && (Subtarget->is32BitReduced())">,
+      AssemblerPredicate<(all_of(not Feature64Bit)),
+                         "LA32 Reduced Integer and Privilege Instruction Set">;
+
+def IsLA32Std
+    : Predicate<"(!Subtarget->is64Bit()) && (!Subtarget->is32BitReduced())">,
+      AssemblerPredicate<(all_of(not Feature64Bit)),
+                         "LA32 Reduced Integer and Privilege Instruction Set">;
+
+def IsLAStd
+    : Predicate<"(!Subtarget->is32BitReduced())">,
+      AssemblerPredicate<(any_of Feature64Bit, Feature32Bit),
+                         "LA32 Reduced Integer and Privilege Instruction Set">;
 
 defvar LA32 = DefaultMode;
 def LA64 : HwMode<"+64bit", [IsLA64]>;
@@ -129,6 +149,7 @@ include "LoongArchInstrInfo.td"
 //===----------------------------------------------------------------------===//
 
 def : ProcessorModel<"generic-la32", NoSchedModel, [Feature32Bit]>;
+def : ProcessorModel<"generic-la32r", NoSchedModel, [Feature32BitReduced]>;
 def : ProcessorModel<"generic-la64", NoSchedModel, [Feature64Bit, FeatureUAL]>;
 
 // Generic 64-bit processor with double-precision floating-point support.

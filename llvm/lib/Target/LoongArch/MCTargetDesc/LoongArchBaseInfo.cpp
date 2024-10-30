@@ -46,7 +46,7 @@ static ABI checkABIStandardized(ABI Abi) {
   default:
     llvm_unreachable("");
   }
-  errs() << "warning: '" << ABIName << "' has not been standardized\n";
+  //errs() << "warning: '" << ABIName << "' has not been standardized\n";
   return Abi;
 }
 

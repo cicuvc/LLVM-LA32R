@@ -195,13 +195,16 @@ bool LoongArchPreRAExpandPseudo::expandPcalau12iInstPair(
       MF->getRegInfo().createVirtualRegister(&LoongArch::GPRRegClass);
   MachineOperand &Symbol = MI.getOperand(1);
 
-  BuildMI(MBB, MBBI, DL, TII->get(LoongArch::PCALAU12I), ScratchReg)
+  auto pcRelInst = MF->getSubtarget().getTargetTriple().isLoongArch32Reduced()
+                       ? LoongArch::PCADDU12I
+                       : LoongArch::PCALAU12I;
+  BuildMI(MBB, MBBI, DL, TII->get(pcRelInst), ScratchReg)
       .addDisp(Symbol, 0, FlagsHi);
 
   MachineInstr *SecondMI =
       BuildMI(MBB, MBBI, DL, TII->get(SecondOpcode), DestReg)
           .addReg(ScratchReg)
-          .addDisp(Symbol, 0, FlagsLo);
+          .addDisp(Symbol, 0x0, FlagsLo);
 
   if (MI.hasOneMemOperand())
     SecondMI->addMemOperand(*MF, *MI.memoperands_begin());

@@ -176,6 +176,8 @@ public:
     DXILSubArch_v1_7,
     DXILSubArch_v1_8,
     LatestDXILSubArch = DXILSubArch_v1_8,
+
+    Loongarch32SubArch_R
   };
   enum VendorType {
     UnknownVendor,
@@ -942,6 +944,7 @@ public:
 
   /// Tests whether the target is 32-bit LoongArch.
   bool isLoongArch32() const { return getArch() == Triple::loongarch32; }
+  bool isLoongArch32Reduced() const { return getSubArch() == Triple::Loongarch32SubArch_R; }
 
   /// Tests whether the target is 64-bit LoongArch.
   bool isLoongArch64() const { return getArch() == Triple::loongarch64; }

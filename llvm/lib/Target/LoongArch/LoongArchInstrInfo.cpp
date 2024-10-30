@@ -548,8 +548,12 @@ void LoongArchInstrInfo::insertIndirectBranch(MachineBasicBlock &MBB,
   Register ScratchReg = MRI.createVirtualRegister(&LoongArch::GPRRegClass);
   auto II = MBB.end();
 
-  MachineInstr &PCALAU12I =
-      *BuildMI(MBB, II, DL, get(LoongArch::PCALAU12I), ScratchReg)
+  auto pcRelInst =
+      MBB.getParent()->getTarget().getTargetTriple().isLoongArch32Reduced()
+          ? LoongArch::PCADDU12I
+          : LoongArch::PCALAU12I;
+
+  MachineInstr &PCALAU12I = *BuildMI(MBB, II, DL, get(pcRelInst), ScratchReg)
            .addMBB(&DestBB, LoongArchII::MO_PCREL_HI);
   MachineInstr &ADDI =
       *BuildMI(MBB, II, DL,

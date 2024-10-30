@@ -3218,7 +3218,7 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
         readCallGraph(ctx, *buffer);
     readCallGraphsFromObjectFiles<ELFT>(ctx);
   }
-
+  
   // Write the result to the file.
   writeResult<ELFT>(ctx);
 }

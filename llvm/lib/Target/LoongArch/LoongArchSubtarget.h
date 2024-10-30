@@ -92,6 +92,7 @@ public:
 #include "LoongArchGenSubtargetInfo.inc"
 
   bool is64Bit() const { return HasLA64; }
+  bool is32BitReduced() const { return HasLA32Reduced; }
   MVT getGRLenVT() const { return GRLenVT; }
   unsigned getGRLen() const { return GRLen; }
   LoongArchABI::ABI getTargetABI() const { return TargetABI; }

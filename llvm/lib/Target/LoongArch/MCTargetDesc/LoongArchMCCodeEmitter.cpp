@@ -22,6 +22,7 @@
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/EndianStream.h"
+#include "llvm/MC/MCSymbol.h"
 
 using namespace llvm;
 
@@ -101,7 +102,6 @@ unsigned
 LoongArchMCCodeEmitter::getMachineOpValue(const MCInst &MI, const MCOperand &MO,
                                           SmallVectorImpl<MCFixup> &Fixups,
                                           const MCSubtargetInfo &STI) const {
-
   if (MO.isReg())
     return Ctx.getRegisterInfo()->getEncodingValue(MO.getReg());
 
@@ -118,6 +118,120 @@ LoongArchMCCodeEmitter::getImmOpValueSub1(const MCInst &MI, unsigned OpNo,
                                           SmallVectorImpl<MCFixup> &Fixups,
                                           const MCSubtargetInfo &STI) const {
   return MI.getOperand(OpNo).getImm() - 1;
+}
+
+unsigned emitRelocSequenceHi(bool useGOT, MCContext& Ctx, const MCExpr *Expr, const MCInst& MI, const MCOperand& MO,
+    SmallVectorImpl<MCFixup>& Fixups,
+                             const MCSubtargetInfo &STI,
+                             llvm::LoongArch::Fixups symbolFixupType =
+                                 LoongArch::fixup_loongarch_sop_push_gprel) {
+
+    if (useGOT) {
+    auto gotBase = Ctx.getOrCreateSymbol("_GLOBAL_OFFSET_TABLE_");
+
+    auto gotRefExpr = MCSymbolRefExpr::create(
+        (const MCSymbol *)gotBase,
+        (MCSymbolRefExpr::VariantKind)LoongArchMCExpr::VK_LoongArch_ABS_LO12,
+        Ctx, MI.getLoc());
+
+    Fixups.push_back(MCFixup::create(
+        0,
+        MCBinaryExpr::createAdd(gotRefExpr, MCConstantExpr::create(0x800, Ctx),Ctx),
+        MCFixupKind(LoongArch::fixup_loongarch_sop_push_pcrel), MI.getLoc()));
+
+    Fixups.push_back(MCFixup::create(0, Expr, MCFixupKind(symbolFixupType),
+        MI.getLoc()));
+
+
+    } else {
+      Fixups.push_back(MCFixup::create(
+          0, MCConstantExpr::create(0x800, Ctx),
+          MCFixupKind(LoongArch::fixup_loongarch_sop_push_abs), MI.getLoc()));
+
+      Fixups.push_back(MCFixup::create(
+          0,
+          Expr,
+          MCFixupKind(LoongArch::fixup_loongarch_sop_push_pcrel), MI.getLoc()));
+    }
+
+  Fixups.push_back(MCFixup::create(
+        0, MCConstantExpr::create(0x0, Ctx),
+        MCFixupKind(LoongArch::fixup_loongarch_sop_add), MI.getLoc()));
+
+  
+  Fixups.push_back(MCFixup::create(
+      0, MCConstantExpr::create(0xC, Ctx),
+      MCFixupKind(LoongArch::fixup_loongarch_sop_push_abs), MI.getLoc()));
+
+  Fixups.push_back(MCFixup::create(
+      0, MCConstantExpr::create(0x0, Ctx),
+      MCFixupKind(LoongArch::fixup_loongarch_sop_sr), MI.getLoc()));
+
+  Fixups.push_back(MCFixup::create(
+      0, MCConstantExpr::create(0x0, Ctx),
+      MCFixupKind(LoongArch::fixup_loongarch_sop_pop32_s_5_20), MI.getLoc()));
+  return 0;
+}
+
+unsigned emitRelocSequenceLo(bool useGOT, MCContext &Ctx, const MCExpr *Expr,
+                                const MCInst &MI, const MCOperand &MO,
+                                SmallVectorImpl<MCFixup> &Fixups,
+                             const MCSubtargetInfo &STI,
+                             llvm::LoongArch::Fixups symbolFixupType =
+                                 LoongArch::fixup_loongarch_sop_push_gprel) {
+  if (useGOT) {
+    auto gotBase = Ctx.getOrCreateSymbol("_GLOBAL_OFFSET_TABLE_");
+
+    auto gotRefExpr = MCSymbolRefExpr::create(
+        (const MCSymbol *)gotBase,
+        (MCSymbolRefExpr::VariantKind)LoongArchMCExpr::VK_LoongArch_ABS_LO12,
+        Ctx, MI.getLoc());
+
+    Fixups.push_back(MCFixup::create(
+        0,
+        MCBinaryExpr::createAdd(gotRefExpr, MCConstantExpr::create(0x804, Ctx),
+                                Ctx),
+        MCFixupKind(LoongArch::fixup_loongarch_sop_push_pcrel), MI.getLoc()));
+
+    Fixups.push_back(MCFixup::create(0, Expr, MCFixupKind(symbolFixupType),
+        MI.getLoc()));
+
+   
+  } else {
+    Fixups.push_back(MCFixup::create(
+        0, MCConstantExpr::create(0x804, Ctx),
+        MCFixupKind(LoongArch::fixup_loongarch_sop_push_abs),
+        MI.getLoc()));
+    Fixups.push_back(MCFixup::create(
+        0,
+        Expr,
+        MCFixupKind(LoongArch::fixup_loongarch_sop_push_pcrel), MI.getLoc()));
+  }
+
+  Fixups.push_back(MCFixup::create(
+      0, MCConstantExpr::create(0x0, Ctx),
+      MCFixupKind(LoongArch::fixup_loongarch_sop_add), MI.getLoc()));
+
+  Fixups.push_back(MCFixup::create(
+      0, MCConstantExpr::create(0xFFF, Ctx),
+      MCFixupKind(LoongArch::fixup_loongarch_sop_push_abs), MI.getLoc()));
+
+  Fixups.push_back(MCFixup::create(
+      0, MCConstantExpr::create(0x0, Ctx),
+      MCFixupKind(LoongArch::fixup_loongarch_sop_and), MI.getLoc()));
+
+    Fixups.push_back(MCFixup::create(
+      0, MCConstantExpr::create(0x800, Ctx),
+      MCFixupKind(LoongArch::fixup_loongarch_sop_push_abs), MI.getLoc()));
+
+  Fixups.push_back(MCFixup::create(
+      0, MCConstantExpr::create(0x0, Ctx),
+      MCFixupKind(LoongArch::fixup_loongarch_sop_sub), MI.getLoc()));
+
+  Fixups.push_back(MCFixup::create(
+      0, MCConstantExpr::create(0x0, Ctx),
+      MCFixupKind(LoongArch::fixup_loongarch_sop_pop32_s_10_12), MI.getLoc()));
+  return 0;
 }
 
 unsigned
@@ -164,24 +278,40 @@ LoongArchMCCodeEmitter::getExprOpValue(const MCInst &MI, const MCOperand &MO,
     case LoongArchMCExpr::VK_LoongArch_ABS64_HI12:
       FixupKind = LoongArch::fixup_loongarch_abs64_hi12;
       break;
-    case LoongArchMCExpr::VK_LoongArch_PCALA_HI20:
+    case LoongArchMCExpr::VK_LoongArch_PCALA_HI20: {
+
       FixupKind = LoongArch::fixup_loongarch_pcala_hi20;
+      if (STI.getTargetTriple().isLoongArch32Reduced())
+        return emitRelocSequenceHi(false, Ctx, Expr, MI, MO, Fixups, STI);
       break;
-    case LoongArchMCExpr::VK_LoongArch_PCALA_LO12:
+    }
+    case LoongArchMCExpr::VK_LoongArch_PCALA_LO12: {
+
       FixupKind = LoongArch::fixup_loongarch_pcala_lo12;
+      if (STI.getTargetTriple().isLoongArch32Reduced()) {
+        return emitRelocSequenceLo(false, Ctx, Expr, MI, MO, Fixups, STI);
+      }
+        
       break;
+    }
     case LoongArchMCExpr::VK_LoongArch_PCALA64_LO20:
       FixupKind = LoongArch::fixup_loongarch_pcala64_lo20;
       break;
     case LoongArchMCExpr::VK_LoongArch_PCALA64_HI12:
       FixupKind = LoongArch::fixup_loongarch_pcala64_hi12;
       break;
-    case LoongArchMCExpr::VK_LoongArch_GOT_PC_HI20:
-      FixupKind = LoongArch::fixup_loongarch_got_pc_hi20;
+    case LoongArchMCExpr::VK_LoongArch_GOT_PC_HI20: {
+      FixupKind = LoongArch::fixup_loongarch_pcala64_hi12;
+      if (STI.getTargetTriple().isLoongArch32Reduced())
+        return emitRelocSequenceHi(true, Ctx, Expr, MI, MO, Fixups, STI);
       break;
-    case LoongArchMCExpr::VK_LoongArch_GOT_PC_LO12:
+      }
+    case LoongArchMCExpr::VK_LoongArch_GOT_PC_LO12: {
       FixupKind = LoongArch::fixup_loongarch_got_pc_lo12;
+      if (STI.getTargetTriple().isLoongArch32Reduced())
+        return emitRelocSequenceLo(true, Ctx, Expr, MI, MO, Fixups, STI);
       break;
+    }
     case LoongArchMCExpr::VK_LoongArch_GOT64_PC_LO20:
       FixupKind = LoongArch::fixup_loongarch_got64_pc_lo20;
       break;
@@ -200,6 +330,7 @@ LoongArchMCCodeEmitter::getExprOpValue(const MCInst &MI, const MCOperand &MO,
     case LoongArchMCExpr::VK_LoongArch_GOT64_HI12:
       FixupKind = LoongArch::fixup_loongarch_got64_hi12;
       break;
+    // TLS LE uses lui.w and don't need to fix pcaddu12 offset
     case LoongArchMCExpr::VK_LoongArch_TLS_LE_HI20:
       FixupKind = LoongArch::fixup_loongarch_tls_le_hi20;
       break;
@@ -212,12 +343,27 @@ LoongArchMCCodeEmitter::getExprOpValue(const MCInst &MI, const MCOperand &MO,
     case LoongArchMCExpr::VK_LoongArch_TLS_LE64_HI12:
       FixupKind = LoongArch::fixup_loongarch_tls_le64_hi12;
       break;
-    case LoongArchMCExpr::VK_LoongArch_TLS_IE_PC_HI20:
+    case LoongArchMCExpr::VK_LoongArch_TLS_IE_PC_HI20: {
+
       FixupKind = LoongArch::fixup_loongarch_tls_ie_pc_hi20;
+      if (STI.getTargetTriple().isLoongArch32Reduced()) {
+        Fixups.push_back(
+            MCFixup::create(0, Expr, MCFixupKind(FixupKind), MI.getLoc()));
+        return emitRelocSequenceHi(true, Ctx, Expr, MI, MO, Fixups, STI,
+                                   LoongArch::fixup_loongarch_sop_push_tls_ie);
+      }
       break;
-    case LoongArchMCExpr::VK_LoongArch_TLS_IE_PC_LO12:
+    }
+    case LoongArchMCExpr::VK_LoongArch_TLS_IE_PC_LO12: {
+
       FixupKind = LoongArch::fixup_loongarch_tls_ie_pc_lo12;
+      if (STI.getTargetTriple().isLoongArch32Reduced())
+        Fixups.push_back(
+            MCFixup::create(0, Expr, MCFixupKind(FixupKind), MI.getLoc()));
+        return emitRelocSequenceLo(true, Ctx, Expr, MI, MO, Fixups, STI,
+                                   LoongArch::fixup_loongarch_sop_push_tls_ie);
       break;
+    }
     case LoongArchMCExpr::VK_LoongArch_TLS_IE64_PC_LO20:
       FixupKind = LoongArch::fixup_loongarch_tls_ie64_pc_lo20;
       break;
@@ -236,15 +382,35 @@ LoongArchMCCodeEmitter::getExprOpValue(const MCInst &MI, const MCOperand &MO,
     case LoongArchMCExpr::VK_LoongArch_TLS_IE64_HI12:
       FixupKind = LoongArch::fixup_loongarch_tls_ie64_hi12;
       break;
-    case LoongArchMCExpr::VK_LoongArch_TLS_LD_PC_HI20:
+    case LoongArchMCExpr::VK_LoongArch_TLS_LD_PC_HI20: {
+
       FixupKind = LoongArch::fixup_loongarch_tls_ld_pc_hi20;
+      if (STI.getTargetTriple().isLoongArch32Reduced()) {
+        Fixups.push_back(
+            MCFixup::create(0, Expr, MCFixupKind(FixupKind), MI.getLoc()));
+        return emitRelocSequenceHi(
+            true, Ctx, Expr, MI, MO, Fixups, STI,
+            LoongArch::fixup_loongarch_sop_push_tls_gd); // LD and GD share tls
+                                                         // offset
+      }
+        
       break;
+    }
     case LoongArchMCExpr::VK_LoongArch_TLS_LD_HI20:
       FixupKind = LoongArch::fixup_loongarch_tls_ld_hi20;
       break;
-    case LoongArchMCExpr::VK_LoongArch_TLS_GD_PC_HI20:
+    case LoongArchMCExpr::VK_LoongArch_TLS_GD_PC_HI20: {
+
       FixupKind = LoongArch::fixup_loongarch_tls_gd_pc_hi20;
+      if (STI.getTargetTriple().isLoongArch32Reduced()) {
+        Fixups.push_back(
+            MCFixup::create(0, Expr, MCFixupKind(FixupKind), MI.getLoc()));
+        return emitRelocSequenceHi(true, Ctx, Expr, MI, MO, Fixups, STI,
+                                   LoongArch::fixup_loongarch_sop_push_tls_gd); 
+      }
+        
       break;
+    }
     case LoongArchMCExpr::VK_LoongArch_TLS_GD_HI20:
       FixupKind = LoongArch::fixup_loongarch_tls_gd_hi20;
       break;
@@ -329,7 +495,6 @@ LoongArchMCCodeEmitter::getExprOpValue(const MCInst &MI, const MCOperand &MO,
 
   assert(FixupKind != LoongArch::fixup_loongarch_invalid &&
          "Unhandled expression!");
-
   Fixups.push_back(
       MCFixup::create(0, Expr, MCFixupKind(FixupKind), MI.getLoc()));
 
@@ -406,6 +571,7 @@ void LoongArchMCCodeEmitter::expandAddTPRel(const MCInst &MI,
 void LoongArchMCCodeEmitter::encodeInstruction(
     const MCInst &MI, SmallVectorImpl<char> &CB,
     SmallVectorImpl<MCFixup> &Fixups, const MCSubtargetInfo &STI) const {
+    
   const MCInstrDesc &Desc = MCII.get(MI.getOpcode());
   // Get byte count of instruction.
   unsigned Size = Desc.getSize();

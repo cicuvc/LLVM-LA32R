@@ -52,6 +52,29 @@ enum Fixups {
   fixup_loongarch_invalid,
   NumTargetFixupKinds = fixup_loongarch_invalid - FirstTargetFixupKind,
 
+
+  fixup_loongarch_sop_push_pcrel =
+      FirstLiteralRelocationKind +
+      ELF::R_LARCH_SOP_PUSH_PCREL,
+  fixup_loongarch_sop_push_abs,
+  fixup_loongarch_sop_push_dup,
+  fixup_loongarch_sop_push_gprel,
+  fixup_loongarch_sop_push_tls_le,
+  fixup_loongarch_sop_push_tls_ie,
+  fixup_loongarch_sop_push_tls_gd,
+  fixup_loongarch_sop_push_pltrel,
+  fixup_loongarch_sop_assert,
+  fixup_loongarch_sop_not,
+  fixup_loongarch_sop_sub,
+  fixup_loongarch_sop_sl,
+  fixup_loongarch_sop_sr,
+  fixup_loongarch_sop_add,
+  fixup_loongarch_sop_and,
+
+  fixup_loongarch_sop_pop32_s_5_20 =
+      FirstLiteralRelocationKind + ELF::R_LARCH_SOP_POP_32_S_5_20,
+  fixup_loongarch_sop_pop32_s_10_12 =
+    FirstLiteralRelocationKind + ELF::R_LARCH_SOP_POP_32_S_10_12,
   // Define fixups for force relocation as FirstLiteralRelocationKind+V
   // represents the relocation type with number V.
   // 20-bit fixup corresponding to %pc_hi20(foo) for instruction pcalau12i.

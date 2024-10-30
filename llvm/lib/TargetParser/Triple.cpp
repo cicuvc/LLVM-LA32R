@@ -602,7 +602,7 @@ static Triple::ArchType parseArch(StringRef ArchName) {
           .Case("wasm32", Triple::wasm32)
           .Case("wasm64", Triple::wasm64)
           .Case("csky", Triple::csky)
-          .Case("loongarch32", Triple::loongarch32)
+          .Cases("loongarch32", "loongarch32r", Triple::loongarch32)
           .Case("loongarch64", Triple::loongarch64)
           .Cases("dxil", "dxilv1.0", "dxilv1.1", "dxilv1.2", "dxilv1.3",
                  "dxilv1.4", "dxilv1.5", "dxilv1.6", "dxilv1.7", "dxilv1.8",
@@ -794,6 +794,10 @@ static Triple::SubArchType parseSubArch(StringRef SubArchName) {
         .EndsWith("v1.7", Triple::DXILSubArch_v1_7)
         .EndsWith("v1.8", Triple::DXILSubArch_v1_8)
         .Default(Triple::NoSubArch);
+
+  if (SubArchName.starts_with("loongarch32") && SubArchName.ends_with("r"))
+    return Triple::Loongarch32SubArch_R;
+
 
   StringRef ARMSubArch = ARM::getCanonicalArchName(SubArchName);
 
