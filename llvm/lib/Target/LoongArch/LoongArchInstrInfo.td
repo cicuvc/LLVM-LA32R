@@ -1270,7 +1270,7 @@ def : Pat<(mul GPR:$rj, (AlslSlliImm:$im)),
                   (AlslSlliImmI1 AlslSlliImm:$im))>;
 } // Predicates = [IsLA64]
 
-let Predicates = [IsLA32Std] in {
+let Predicates = [IsLA64] in {
 
 foreach Idx = 1...7 in {
   defvar ShamtA = !mul(8, Idx);
@@ -1303,12 +1303,12 @@ def : PatGprImm<xor, XORI, uimm12>;
 def : Pat<(not GPR:$rj), (NOR GPR:$rj, R0)>;
 def : Pat<(not (or GPR:$rj, GPR:$rk)), (NOR GPR:$rj, GPR:$rk)>;
 
-let Predicates = [IsLA32Std] in {
+let Predicates = [IsLAStd] in {
 
 def : Pat<(or GPR:$rj, (not GPR:$rk)), (ORN GPR:$rj, GPR:$rk)>;
 def : Pat<(and GPR:$rj, (not GPR:$rk)), (ANDN GPR:$rj, GPR:$rk)>;
 
-} // Predicates = [IsLA32Std]
+} // Predicates = [IsLAStd]
 
 let Predicates = [IsLA32Std] in {
 def : Pat<(and GPR:$rj, BstrinsImm:$imm),
@@ -1419,6 +1419,8 @@ def : Pat<(sext_inreg GPR:$rj, i16), (SRAI_W (SLLI_W GPR:$rj, 16), 16)>;
 
 let Predicates = [IsLA64] in {
 def : Pat<(sext_inreg GPR:$rj, i32), (ADDI_W GPR:$rj, 0)>;
+def : Pat<(sext_inreg GPR:$rj, i8), (EXT_W_B GPR:$rj)>;
+def : Pat<(sext_inreg GPR:$rj, i16), (EXT_W_H GPR:$rj)>;
 } // Predicates = [IsLA64]
 
 /// Setcc
@@ -1817,6 +1819,8 @@ def : Pat<(bitreverse (bswap GPR:$rj)), (BITREV_4B GPR:$rj)>;
 } // Predicates = [IsLA32Std]
 
 let Predicates = [IsLA64] in {
+def : Pat<(loongarch_revb_2h GPR:$rj), (REVB_2H GPR:$rj)>;
+def : Pat<(loongarch_bitrev_4b GPR:$rj), (BITREV_4B GPR:$rj)>;
 def : Pat<(loongarch_revb_2w GPR:$rj), (REVB_2W GPR:$rj)>;
 def : Pat<(bswap GPR:$rj), (REVB_D GPR:$rj)>;
 def : Pat<(loongarch_bitrev_w GPR:$rj), (BITREV_W GPR:$rj)>;
