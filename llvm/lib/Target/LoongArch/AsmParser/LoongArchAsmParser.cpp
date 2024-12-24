@@ -1298,7 +1298,7 @@ void LoongArchAsmParser::emitLoadAddressTLSDescPcrel(MCInst &Inst, SMLoc IDLoc,
   auto pcRelInst = Out.getContext().getTargetTriple().isLoongArch32Reduced()
                        ? LoongArch::PCADDU12I
                        : LoongArch::PCALAU12I;
-  report_fatal_error("Not implemented TLSDesccPcRel");
+  //report_fatal_error("Not implemented TLSDesccPcRel");
   Insts.push_back(LoongArchAsmParser::Inst(
       pcRelInst, LoongArchMCExpr::VK_LoongArch_TLS_DESC_PC_HI20));
   Insts.push_back(LoongArchAsmParser::Inst(

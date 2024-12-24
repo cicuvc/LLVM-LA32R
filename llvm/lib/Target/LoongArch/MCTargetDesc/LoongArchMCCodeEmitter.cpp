@@ -125,7 +125,7 @@ unsigned emitRelocSequenceHi(bool useGOT, MCContext& Ctx, const MCExpr *Expr, co
                              const MCSubtargetInfo &STI,
                              llvm::LoongArch::Fixups symbolFixupType =
                                  LoongArch::fixup_loongarch_sop_push_gprel) {
-
+    
     if (useGOT) {
     auto gotBase = Ctx.getOrCreateSymbol("_GLOBAL_OFFSET_TABLE_");
 
@@ -301,15 +301,21 @@ LoongArchMCCodeEmitter::getExprOpValue(const MCInst &MI, const MCOperand &MO,
       FixupKind = LoongArch::fixup_loongarch_pcala64_hi12;
       break;
     case LoongArchMCExpr::VK_LoongArch_GOT_PC_HI20: {
-      FixupKind = LoongArch::fixup_loongarch_pcala64_hi12;
-      if (STI.getTargetTriple().isLoongArch32Reduced())
+      FixupKind = LoongArch::fixup_loongarch_got_pc_hi20;
+      
+      if (STI.getTargetTriple().isLoongArch32Reduced()){
+        FixupKind = LoongArch::fixup_loongarch_pcala64_hi12;
         return emitRelocSequenceHi(true, Ctx, Expr, MI, MO, Fixups, STI);
+      }
+        
       break;
       }
     case LoongArchMCExpr::VK_LoongArch_GOT_PC_LO12: {
       FixupKind = LoongArch::fixup_loongarch_got_pc_lo12;
-      if (STI.getTargetTriple().isLoongArch32Reduced())
+      if (STI.getTargetTriple().isLoongArch32Reduced()){
+        FixupKind = LoongArch::fixup_loongarch_got_pc_lo12;
         return emitRelocSequenceLo(true, Ctx, Expr, MI, MO, Fixups, STI);
+      }
       break;
     }
     case LoongArchMCExpr::VK_LoongArch_GOT64_PC_LO20:
@@ -357,11 +363,13 @@ LoongArchMCCodeEmitter::getExprOpValue(const MCInst &MI, const MCOperand &MO,
     case LoongArchMCExpr::VK_LoongArch_TLS_IE_PC_LO12: {
 
       FixupKind = LoongArch::fixup_loongarch_tls_ie_pc_lo12;
-      if (STI.getTargetTriple().isLoongArch32Reduced())
+      if (STI.getTargetTriple().isLoongArch32Reduced()){
         Fixups.push_back(
             MCFixup::create(0, Expr, MCFixupKind(FixupKind), MI.getLoc()));
+
         return emitRelocSequenceLo(true, Ctx, Expr, MI, MO, Fixups, STI,
                                    LoongArch::fixup_loongarch_sop_push_tls_ie);
+      }
       break;
     }
     case LoongArchMCExpr::VK_LoongArch_TLS_IE64_PC_LO20:
