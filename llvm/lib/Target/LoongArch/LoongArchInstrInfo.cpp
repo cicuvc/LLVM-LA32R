@@ -417,6 +417,30 @@ bool LoongArchInstrInfo::isSchedulingBoundary(const MachineInstr &MI,
     if (MI.getOperand(1).getTargetFlags() == LoongArchII::MO_CALL36)
       return true;
     break;
+  case LoongArch::PCADDU12I: {
+    auto MO0 = MI.getOperand(1).getTargetFlags();
+    if (MO0 == LoongArchII::MO_PCREL_HI)
+      return true;
+    if ((MO0 == LoongArchII::MO_GOT_PC_HI || MO0 == LoongArchII::MO_LD_PC_HI ||
+         MO0 == LoongArchII::MO_GD_PC_HI))
+      return true;
+    if (MO0 == LoongArchII::MO_IE_PC_HI)
+      return true;
+    break;
+  }
+  case LoongArch::LD_W:
+  case LoongArch::ST_W:
+  case LoongArch::ADDI_W: {
+    auto MO0 = MI.getOperand(1).getTargetFlags();
+
+    if (MO0 == LoongArchII::MO_PCREL_LO)
+      return true;
+    if (MO0 == LoongArchII::MO_GOT_PC_LO)
+      return true;
+    if (MO0 == LoongArchII::MO_IE_PC_LO)
+      return true;
+    break;
+  }
   case LoongArch::PCALAU12I: {
     auto AddI = std::next(MII);
     if (AddI == MIE || AddI->getOpcode() != LoongArch::ADDI_D)
@@ -554,7 +578,7 @@ void LoongArchInstrInfo::insertIndirectBranch(MachineBasicBlock &MBB,
           : LoongArch::PCALAU12I;
 
   MachineInstr &PCALAU12I = *BuildMI(MBB, II, DL, get(pcRelInst), ScratchReg)
-           .addMBB(&DestBB, LoongArchII::MO_PCREL_HI);
+                                 .addMBB(&DestBB, LoongArchII::MO_PCREL_HI);
   MachineInstr &ADDI =
       *BuildMI(MBB, II, DL,
                get(STI.is64Bit() ? LoongArch::ADDI_D : LoongArch::ADDI_W),

@@ -16,13 +16,14 @@
 #include "MCTargetDesc/LoongArchMCTargetDesc.h"
 #include "llvm/MC/MCCodeEmitter.h"
 #include "llvm/MC/MCContext.h"
+#include "llvm/MC/MCFixup.h"
 #include "llvm/MC/MCInstBuilder.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/EndianStream.h"
-#include "llvm/MC/MCSymbol.h"
 
 using namespace llvm;
 
@@ -120,45 +121,76 @@ LoongArchMCCodeEmitter::getImmOpValueSub1(const MCInst &MI, unsigned OpNo,
   return MI.getOperand(OpNo).getImm() - 1;
 }
 
-unsigned emitRelocSequenceHi(bool useGOT, MCContext& Ctx, const MCExpr *Expr, const MCInst& MI, const MCOperand& MO,
-    SmallVectorImpl<MCFixup>& Fixups,
-                             const MCSubtargetInfo &STI,
-                             llvm::LoongArch::Fixups symbolFixupType =
-                                 LoongArch::fixup_loongarch_sop_push_gprel) {
-    
-    if (useGOT) {
-    auto gotBase = Ctx.getOrCreateSymbol("_GLOBAL_OFFSET_TABLE_");
+class LoongArchInstAddressHintMCExpr : public MCExpr {
+public:
+  size_t InstAddress;
+  bool StubActivated;
+  const MCSymbol *TargetSymbol;
+  int RegisterIndex;
+  LoongArchInstAddressHintMCExpr(size_t Address, bool StubActivated = false)
+      : MCExpr(MCExpr::ExprKind::Constant, SMLoc()), InstAddress(Address),
+        StubActivated(StubActivated), TargetSymbol(nullptr), RegisterIndex(0) {}
+  void activateHintStub(const LoongArchMCExpr *LaExpr, int TmpRegIndex) {
+    StubActivated = true;
+    const auto *SubExpr = LaExpr->getSubExpr();
+    auto &Symbol = ((const MCSymbolRefExpr *)SubExpr)->getSymbol();
+    TargetSymbol = &Symbol;
+    RegisterIndex = TmpRegIndex;
+  }
+  bool matchStub(const LoongArchMCExpr *LaExpr, int TmpRegIndex) const {
+    if (!StubActivated)
+      return false;
+    const auto *const SubExpr = LaExpr->getSubExpr();
+    auto &Symbol = ((const MCSymbolRefExpr *)SubExpr)->getSymbol();
+    return TargetSymbol == &Symbol && RegisterIndex == TmpRegIndex;
+  }
+};
 
-    auto gotRefExpr = MCSymbolRefExpr::create(
-        (const MCSymbol *)gotBase,
+unsigned emitRelocSequenceHi(bool UseGot, MCContext &Ctx, const MCExpr *Expr,
+                             const MCInst &MI, const MCOperand &MO,
+                             SmallVectorImpl<MCFixup> &Fixups,
+                             const MCSubtargetInfo &STI,
+                             llvm::LoongArch::Fixups SymbolFixupType =
+                                 LoongArch::fixup_loongarch_sop_push_gprel) {
+  auto *HintFixup = Fixups.end() - 1;
+  if (HintFixup->getKind() == (MCFixupKind)LoongArch::fixup_loongarch_relax) {
+    auto *HintExpr = reinterpret_cast<LoongArchInstAddressHintMCExpr *>(const_cast<MCExpr *>(HintFixup->getValue()));
+    HintExpr->activateHintStub((const LoongArchMCExpr *)Expr,
+                               MI.getOperand(0).getReg().id());
+  } else {
+    report_fatal_error("Address hint is missing");
+  }
+  if (UseGot) {
+    auto *GotBase = Ctx.getOrCreateSymbol("_GLOBAL_OFFSET_TABLE_");
+
+    const auto *GotRefExpr = MCSymbolRefExpr::create(
+        (const MCSymbol *)GotBase,
         (MCSymbolRefExpr::VariantKind)LoongArchMCExpr::VK_LoongArch_ABS_LO12,
         Ctx, MI.getLoc());
 
     Fixups.push_back(MCFixup::create(
         0,
-        MCBinaryExpr::createAdd(gotRefExpr, MCConstantExpr::create(0x800, Ctx),Ctx),
+        MCBinaryExpr::createAdd(GotRefExpr, MCConstantExpr::create(0x800, Ctx),
+                                Ctx),
         MCFixupKind(LoongArch::fixup_loongarch_sop_push_pcrel), MI.getLoc()));
 
-    Fixups.push_back(MCFixup::create(0, Expr, MCFixupKind(symbolFixupType),
+    Fixups.push_back(
+        MCFixup::create(0, Expr, MCFixupKind(SymbolFixupType), MI.getLoc()));
+
+  } else {
+    Fixups.push_back(MCFixup::create(
+        0, MCConstantExpr::create(0x800, Ctx),
+        MCFixupKind(LoongArch::fixup_loongarch_sop_push_abs), MI.getLoc()));
+
+    Fixups.push_back(MCFixup::create(
+        0, Expr, MCFixupKind(LoongArch::fixup_loongarch_sop_push_pcrel),
         MI.getLoc()));
-
-
-    } else {
-      Fixups.push_back(MCFixup::create(
-          0, MCConstantExpr::create(0x800, Ctx),
-          MCFixupKind(LoongArch::fixup_loongarch_sop_push_abs), MI.getLoc()));
-
-      Fixups.push_back(MCFixup::create(
-          0,
-          Expr,
-          MCFixupKind(LoongArch::fixup_loongarch_sop_push_pcrel), MI.getLoc()));
-    }
+  }
 
   Fixups.push_back(MCFixup::create(
-        0, MCConstantExpr::create(0x0, Ctx),
-        MCFixupKind(LoongArch::fixup_loongarch_sop_add), MI.getLoc()));
+      0, MCConstantExpr::create(0x0, Ctx),
+      MCFixupKind(LoongArch::fixup_loongarch_sop_add), MI.getLoc()));
 
-  
   Fixups.push_back(MCFixup::create(
       0, MCConstantExpr::create(0xC, Ctx),
       MCFixupKind(LoongArch::fixup_loongarch_sop_push_abs), MI.getLoc()));
@@ -173,39 +205,62 @@ unsigned emitRelocSequenceHi(bool useGOT, MCContext& Ctx, const MCExpr *Expr, co
   return 0;
 }
 
-unsigned emitRelocSequenceLo(bool useGOT, MCContext &Ctx, const MCExpr *Expr,
-                                const MCInst &MI, const MCOperand &MO,
-                                SmallVectorImpl<MCFixup> &Fixups,
+unsigned emitRelocSequenceLo(bool UseGot, MCContext &Ctx, const MCExpr *Expr,
+                             const MCInst &MI, const MCOperand &MO,
+                             SmallVectorImpl<MCFixup> &Fixups,
                              const MCSubtargetInfo &STI,
-                             llvm::LoongArch::Fixups symbolFixupType =
+                             llvm::LoongArch::Fixups SymbolFixupType =
                                  LoongArch::fixup_loongarch_sop_push_gprel) {
-  if (useGOT) {
-    auto gotBase = Ctx.getOrCreateSymbol("_GLOBAL_OFFSET_TABLE_");
+  auto *HintFixup = Fixups.end() - 1;
+  size_t LoAddress = 0;
+  if (HintFixup->getKind() == (MCFixupKind)LoongArch::fixup_loongarch_relax) {
+    auto *HintExpr = ((const LoongArchInstAddressHintMCExpr *)HintFixup->getValue());
+    LoAddress = HintExpr->InstAddress;
+  } else {
+    report_fatal_error("Lo Address hint is missing");
+  }
 
-    auto gotRefExpr = MCSymbolRefExpr::create(
-        (const MCSymbol *)gotBase,
+  const size_t InvalidAddress = (size_t)-1;
+  size_t PcadduAddress = InvalidAddress;
+  for (int i = Fixups.size() - 1; i >= 0; i--) {
+    auto &CurrentFixup = Fixups[i];
+    if (CurrentFixup.getKind() == (MCFixupKind)LoongArch::fixup_loongarch_relax) {
+      auto *HintExpr = (const LoongArchInstAddressHintMCExpr *)CurrentFixup.getValue();
+      if (HintExpr->matchStub((const LoongArchMCExpr *)Expr,
+                              MI.getOperand(1).getReg().id())) {
+        PcadduAddress = HintExpr->InstAddress;
+        break;
+      }
+    }
+  }
+  if (PcadduAddress == InvalidAddress) {
+    report_fatal_error("Unable to match lo12 inst with hi20 inst");
+  }
+  auto InstOffset = LoAddress - PcadduAddress;
+  if (UseGot) {
+    auto *GotBase = Ctx.getOrCreateSymbol("_GLOBAL_OFFSET_TABLE_");
+
+    const auto *GotRefExpr = MCSymbolRefExpr::create(
+        (const MCSymbol *)GotBase,
         (MCSymbolRefExpr::VariantKind)LoongArchMCExpr::VK_LoongArch_ABS_LO12,
         Ctx, MI.getLoc());
 
     Fixups.push_back(MCFixup::create(
         0,
-        MCBinaryExpr::createAdd(gotRefExpr, MCConstantExpr::create(0x804, Ctx),
-                                Ctx),
+        MCBinaryExpr::createAdd(
+            GotRefExpr, MCConstantExpr::create(0x800 + InstOffset, Ctx), Ctx),
         MCFixupKind(LoongArch::fixup_loongarch_sop_push_pcrel), MI.getLoc()));
 
-    Fixups.push_back(MCFixup::create(0, Expr, MCFixupKind(symbolFixupType),
-        MI.getLoc()));
+    Fixups.push_back(
+        MCFixup::create(0, Expr, MCFixupKind(SymbolFixupType), MI.getLoc()));
 
-   
   } else {
     Fixups.push_back(MCFixup::create(
-        0, MCConstantExpr::create(0x804, Ctx),
-        MCFixupKind(LoongArch::fixup_loongarch_sop_push_abs),
-        MI.getLoc()));
+        0, MCConstantExpr::create(0x800 + InstOffset, Ctx),
+        MCFixupKind(LoongArch::fixup_loongarch_sop_push_abs), MI.getLoc()));
     Fixups.push_back(MCFixup::create(
-        0,
-        Expr,
-        MCFixupKind(LoongArch::fixup_loongarch_sop_push_pcrel), MI.getLoc()));
+        0, Expr, MCFixupKind(LoongArch::fixup_loongarch_sop_push_pcrel),
+        MI.getLoc()));
   }
 
   Fixups.push_back(MCFixup::create(
@@ -220,7 +275,7 @@ unsigned emitRelocSequenceLo(bool useGOT, MCContext &Ctx, const MCExpr *Expr,
       0, MCConstantExpr::create(0x0, Ctx),
       MCFixupKind(LoongArch::fixup_loongarch_sop_and), MI.getLoc()));
 
-    Fixups.push_back(MCFixup::create(
+  Fixups.push_back(MCFixup::create(
       0, MCConstantExpr::create(0x800, Ctx),
       MCFixupKind(LoongArch::fixup_loongarch_sop_push_abs), MI.getLoc()));
 
@@ -291,7 +346,7 @@ LoongArchMCCodeEmitter::getExprOpValue(const MCInst &MI, const MCOperand &MO,
       if (STI.getTargetTriple().isLoongArch32Reduced()) {
         return emitRelocSequenceLo(false, Ctx, Expr, MI, MO, Fixups, STI);
       }
-        
+
       break;
     }
     case LoongArchMCExpr::VK_LoongArch_PCALA64_LO20:
@@ -302,17 +357,17 @@ LoongArchMCCodeEmitter::getExprOpValue(const MCInst &MI, const MCOperand &MO,
       break;
     case LoongArchMCExpr::VK_LoongArch_GOT_PC_HI20: {
       FixupKind = LoongArch::fixup_loongarch_got_pc_hi20;
-      
-      if (STI.getTargetTriple().isLoongArch32Reduced()){
+
+      if (STI.getTargetTriple().isLoongArch32Reduced()) {
         FixupKind = LoongArch::fixup_loongarch_pcala64_hi12;
         return emitRelocSequenceHi(true, Ctx, Expr, MI, MO, Fixups, STI);
       }
-        
+
       break;
-      }
+    }
     case LoongArchMCExpr::VK_LoongArch_GOT_PC_LO12: {
       FixupKind = LoongArch::fixup_loongarch_got_pc_lo12;
-      if (STI.getTargetTriple().isLoongArch32Reduced()){
+      if (STI.getTargetTriple().isLoongArch32Reduced()) {
         FixupKind = LoongArch::fixup_loongarch_got_pc_lo12;
         return emitRelocSequenceLo(true, Ctx, Expr, MI, MO, Fixups, STI);
       }
@@ -363,7 +418,7 @@ LoongArchMCCodeEmitter::getExprOpValue(const MCInst &MI, const MCOperand &MO,
     case LoongArchMCExpr::VK_LoongArch_TLS_IE_PC_LO12: {
 
       FixupKind = LoongArch::fixup_loongarch_tls_ie_pc_lo12;
-      if (STI.getTargetTriple().isLoongArch32Reduced()){
+      if (STI.getTargetTriple().isLoongArch32Reduced()) {
         Fixups.push_back(
             MCFixup::create(0, Expr, MCFixupKind(FixupKind), MI.getLoc()));
 
@@ -401,7 +456,7 @@ LoongArchMCCodeEmitter::getExprOpValue(const MCInst &MI, const MCOperand &MO,
             LoongArch::fixup_loongarch_sop_push_tls_gd); // LD and GD share tls
                                                          // offset
       }
-        
+
       break;
     }
     case LoongArchMCExpr::VK_LoongArch_TLS_LD_HI20:
@@ -414,9 +469,9 @@ LoongArchMCCodeEmitter::getExprOpValue(const MCInst &MI, const MCOperand &MO,
         Fixups.push_back(
             MCFixup::create(0, Expr, MCFixupKind(FixupKind), MI.getLoc()));
         return emitRelocSequenceHi(true, Ctx, Expr, MI, MO, Fixups, STI,
-                                   LoongArch::fixup_loongarch_sop_push_tls_gd); 
+                                   LoongArch::fixup_loongarch_sop_push_tls_gd);
       }
-        
+
       break;
     }
     case LoongArchMCExpr::VK_LoongArch_TLS_GD_HI20:
@@ -579,7 +634,7 @@ void LoongArchMCCodeEmitter::expandAddTPRel(const MCInst &MI,
 void LoongArchMCCodeEmitter::encodeInstruction(
     const MCInst &MI, SmallVectorImpl<char> &CB,
     SmallVectorImpl<MCFixup> &Fixups, const MCSubtargetInfo &STI) const {
-    
+
   const MCInstrDesc &Desc = MCII.get(MI.getOpcode());
   // Get byte count of instruction.
   unsigned Size = Desc.getSize();
@@ -606,8 +661,18 @@ void LoongArchMCCodeEmitter::encodeInstruction(
   default:
     llvm_unreachable("Unhandled encodeInstruction length!");
   case 4: {
+    auto *InstHint = new LoongArchInstAddressHintMCExpr(CB.size(), false);
+    auto HintIndex = Fixups.size();
+    Fixups.push_back(MCFixup::create(
+        0, InstHint, (MCFixupKind)LoongArch::fixup_loongarch_relax));
+
     uint32_t Bits = getBinaryCodeForInstr(MI, Fixups, STI);
     support::endian::write(CB, Bits, llvm::endianness::little);
+
+    if (!InstHint->StubActivated) {
+      Fixups.erase(Fixups.begin() + HintIndex);
+      delete InstHint;
+    }
     break;
   }
   }
